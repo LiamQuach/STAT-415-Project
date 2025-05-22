@@ -1,0 +1,73 @@
+---
+title: "Brief Proposal"
+format: html
+editor: visual
+---
+
+**Title:**
+Bayesian Logistic Regression for Predicting Customer Churn in a Telecommunications Company
+
+**Team Members:**
+Liam Quach, Andrew Kerr
+
+**Project Type:**
+Option 1 – Full Bayesian data analysis in a new context (logistic regression)
+
+
+### **Context and Research Question**
+
+Customer churn—when a customer discontinues service—is a major concern for subscription-based companies. The **Telco Customer Churn dataset** from Kaggle provides customer information including contract details, demographics, and service usage. Our goal is to **build a Bayesian logistic regression model to estimate the probability of churn based on customer attributes**.
+
+**Research Question:**
+
+> *How do customer characteristics (e.g., contract type, monthly charges, tenure) influence the likelihood of churn?*
+
+
+
+### **Data Description**
+
+* **Source:** [Kaggle: Telco Customer Churn Dataset](https://www.kaggle.com/datasets/blastchar/telco-customer-churn)
+* **Sample Size:** \~7,000 observations
+* **Target Variable:** `Churn` (Yes/No)
+* **Predictors:**
+
+  * Continuous: `tenure`, `MonthlyCharges`, `TotalCharges`
+  * Categorical: `Contract`, `InternetService`, `PaymentMethod`, `SeniorCitizen`, `Gender`
+
+We will preprocess categorical variables using dummy encoding and scale numeric features.
+
+
+
+### **Proposed Bayesian Model**
+
+* **Model Type:** Bayesian Logistic Regression
+* **Likelihood:** Bernoulli likelihood for binary outcome `Churn`
+* **Link Function:** Logit
+* **Priors:**
+
+  * Coefficients: Normal(0, 5)
+  * Intercept: Normal(0, 10)
+* **Justification of Priors:** Weakly informative priors to reflect baseline uncertainty while preventing overfitting.
+
+
+
+### **Planned Analyses**
+
+* Fit the model using `brms` or `rstanarm` in R.
+* Summarize posterior distributions for coefficients (credible intervals, posterior means).
+* Posterior predictive checks to assess model fit.
+* Sensitivity analysis using alternative priors.
+* Compare to frequentist logistic regression results.
+* Use model to generate posterior predicted probabilities for new data.
+
+
+
+### **Deliverables**
+
+* Reproducible report in Quarto or RMarkdown
+* Code and plots (diagnostics, posteriors, PPC)
+* Summary of findings and comparison with frequentist approach
+
+
+
+
