@@ -26,6 +26,7 @@ library(loo)
 library(patchwork)
 library(knitr)
 library(gt)
+library(rstan)
 
 # Set theme
 theme_set(theme_minimal())
