@@ -37,12 +37,9 @@ set.seed(123)
 
 ## 1. Introduction
 
-This report presents a Bayesian survival analysis of customer churn in a telecommunications company, extending the frequentist analysis previously conducted. We implement a Bayesian Proportional Hazards Model using a Weibull likelihood to analyze how customer characteristics influence the likelihood of churn. This approach offers several advantages over frequentist methods:
+The Telco Customer Churn dataset is a fictional dataset created by IBM to simulate customer data for a telecommunications company, and was designed to help predict customer churn, or when a customer stops using the company’s services. The goal of this dataset is to analyze customer behavior and develop strategies to retain customers. This dataset in particular simulates customer data for a telecommunications company that provided home phone and Internet services to 7,043 customers in California during the third quarter.
 
-- **Uncertainty Quantification**: Full posterior distributions for all parameters
-- **Probabilistic Interpretations**: Direct probability statements about parameters
-- **Flexibility**: Easy incorporation of prior knowledge
-- **Predictive Distributions**: Natural framework for prediction with uncertainty
+This report presents a Bayesian survival analysis of customer churn in a simulated telecommunications company, extending the frequentist analysis previously conducted by us in Stat 417. Here we implement a Bayesian Proportional Hazards Model using a Weibull likelihood to analyze how customer characteristics influence the likelihood of churn. 
 
 ### 1.1 Research Question
 
@@ -51,10 +48,10 @@ This report presents a Bayesian survival analysis of customer churn in a telecom
 ## 2. Data Preparation
 
 ```{r data-loading}
-# Load the data
+# Load data
 tele <- read_csv(here("data", "Telco-Customer-Churn-Clean.csv"))
 
-# Data cleaning and preparation
+# Data cleaning
 tele <- tele %>%
   mutate(
     # Convert character columns to factors
@@ -69,7 +66,6 @@ tele <- tele %>%
   # Remove customerID as it's not needed for modeling
   select(-customerID)
 
-# Display data structure
 glimpse(tele)
 ```
 
@@ -89,10 +85,10 @@ summary_stats <- tele %>%
   )
 
 summary_stats %>%
+  pivot_longer(everything(), names_to = "Statistic", values_to = "Value") %>%
   gt() %>%
   tab_header(title = "Summary Statistics") %>%
-  fmt_number(columns = c(churn_rate), decimals = 3) %>%
-  fmt_number(columns = c(median_tenure, mean_tenure, median_monthly_charges, mean_monthly_charges), decimals = 1)
+  fmt_number(columns = c(Value), decimals = 2)
 
 # Churn by key variables
 churn_by_contract <- tele %>%
@@ -116,15 +112,21 @@ churn_by_payment <- tele %>%
 
 ### 3.1 Model Specification
 
-We implement a Bayesian Weibull proportional hazards model. The Weibull distribution was chosen based on the parametric survival analysis which identified it as the best-fitting distribution (Anderson-Darling test statistic = 16986.795).
+We implement a Bayesian Weibull proportional hazards model. The Weibull distribution was chosen based on the parametric survival analysis from our Stat 417 report, which identified it as the best-fitting distribution (Anderson-Darling test statistic = 16986.795). We will use the same predictors in the Bayesian model as we did in our frequentist model to enable a direct comparisian between the two.
 
 **Model Structure:**
+
 - **Likelihood**: Weibull distribution for survival times
+
 - **Predictors**: Partner, InternetService, OnlineSecurity, DeviceProtection, StreamingTV, StreamingMovies, Contract, PaperlessBilling, PaymentMethod, TotalCharges
+
 - **Priors**:
-  - Regression coefficients: Normal(0, 1)
-  - Weibull shape parameter: Half-Normal(1)
-  - Intercept (scale): Normal(0, 1)
+
+  - Regression coefficients: Normal(0, 1); A weakly informative prior with a variance of 1 to allow for a reasonable range of effect sizes.
+  
+  - Weibull shape parameter: Half-Normal(1); This prior places more probability on smaller values, reflecting our initial expectation that the hazard may be decreasing or constant early on.
+  
+  - Intercept (scale): Normal(0, 1); Similar to the regression coefficients, this provides a weakly informative starting point for the baseline hazard.
 
 ### 3.2 Data Preparation for Modeling
 
@@ -134,7 +136,6 @@ We implement a Bayesian Weibull proportional hazards model. The Weibull distribu
 tele_model <- tele %>%
   mutate(
     TotalCharges_scaled = scale(TotalCharges)[,1],
-    # Create survival object components
     event = Churn,
     time = tenure_months
   ) %>%
@@ -165,7 +166,7 @@ cat("Final sample size:", nrow(tele_model), "\n")
 ```{r model-fitting}
 #| eval: true
 
-# Define priors
+# Priors
 priors <- c(
   # Regression coefficients - weakly informative
   prior(normal(0, 1), class = b),
@@ -175,7 +176,7 @@ priors <- c(
   prior(normal(0, 1), class = Intercept)
 )
 
-# Fit the Bayesian Weibull model
+# Fit Bayesian Weibull model
 bayes_weibull <- brm(
   time | cens(1 - event) ~ Partner + InternetService + OnlineSecurity + 
                            DeviceProtection + StreamingTV + StreamingMovies + 
@@ -195,7 +196,7 @@ bayes_weibull <- brm(
 ```
 
 ```{r load-model}
-# Load pre-fitted model (or fit if not available)
+# Load pre-fitted model
 model_file <- here("models", "bayes_weibull_model.rds")
 
 if (file.exists(model_file)) {
@@ -257,7 +258,8 @@ cat("Minimum effective sample size:", min(eff_vals, na.rm = TRUE), "\n")
 ```{r pp-checks}
 # Density overlay
 pp_check(bayes_weibull, type = "dens_overlay", ndraws = 100) +
-  labs(title = "Posterior Predictive Check: Density Overlay")
+  labs(title = "Posterior Predictive Check: Density Overlay") +
+  xlim(c(0, 250))
 
 # Survival probability checks at different time points
 pp_check(bayes_weibull, type = "stat", stat = "median") +
@@ -283,6 +285,8 @@ survival_comparison %>%
   tab_header(title = "Observed vs Predicted Survival Rates") %>%
   fmt_number(columns = c(Observed, Predicted, Difference), decimals = 3)
 ```
+
+The density overlay plot shows a slight discrepancy between the observed data and the models simulated data. The model under predicts the amount of churning customers with very small times (< 10 months), then over predicts for between 10 and 25 months, and under predicts again for 25 to 75 months before over predicting for any amount of time longer than 75 months. This pattern is reflected in the median survival times where the median of the model predictions is greater than the median of the observed data.
 
 ## 4. Results
 
@@ -364,6 +368,10 @@ p2 <- payment_draws %>%
 p1 / p2
 ```
 
+A hazard ratio above 1 indicates an increased risk of churn, while below 1 indicates a decreased risk. Above we examine the distribution of hazard ratios between contract year and payment method. In the table in section 4.1, we note that two year contracts have a hazard ratio of 0.161, meaning customers with a two year contract have an 83.9% lower churn risk month-to-month customers. The distribution above confirms this finding, further showing that one year contracts have a slightly greater churn risk than two year contracts, but still a smaller (41.8% lower) churn risk than month-to-month.
+
+A larger risk factor of customer churn is the payment method. As seen in the plots above, customers paying by electronic check or mailed check have a greater risk of churn than customers who pay automatically by credit card when compared to customers who pay with automatic bank transfer.
+
 ## 5. Comparison with Frequentist Results
 
 ### 5.1 Contract Effects Comparison
@@ -395,6 +403,8 @@ contract_comparison %>%
   tab_spanner(label = "Bayesian Weibull Model", columns = starts_with("Bayes"))
 ```
 
+The tables above compares the contract effects. This effect was chosen as it was the only variable to satisfy the proportional hazards check in the frequentist analysis. The Bayesian model's estimates are less extreme (e.g., HR of 0.161 vs. 0.016 for a two-year contract), however both models agree that longer contracts dramatically reduce churn.
+
 ### 5.2 Key Findings Comparison
 
 ```{r comparison-summary}
@@ -407,8 +417,7 @@ comparison_summary <- tribble(
   "Contract Effect (1-year)", "67% reduction in hazard", "65.8% reduction in hazard",
   "Electronic Check", "52.3% increase in hazard", "48.7% increase in hazard",
   "Total Charges Effect", "0.145% decrease per dollar", "0.132% decrease per unit",
-  "Proportional Hazards", "Assumption violated for most variables", "Assumption holds within Weibull framework",
-  "Uncertainty Quantification", "95% Confidence Intervals", "Full posterior distributions"
+  "Proportional Hazards", "Assumption violated for most variables", "Assumption holds within Weibull framework"
 )
 
 comparison_summary %>%
@@ -419,6 +428,8 @@ comparison_summary %>%
     locations = cells_body(rows = c(1, 3, 5, 7))
   )
 ```
+
+The above table shows that the substantive conclusions are very similar (e.g., 98.2% vs. 98.4% hazard reduction for two-year contracts). A difference between the two models is that the Bayesian model's assumptions hold, whereas the proportional hazards assumption for the Cox model were violated for all variables except Contract, suggesting the Bayesian results may be more reliable.
 
 ## 6. Sensitivity Analysis
 
@@ -475,49 +486,47 @@ bayes_weibull_vague <- brm(
 ```
 
 ```{r sensitivity-results}
-# Load alternative models if available
+# Load alternative models
 inform_file <- here("models", "bayes_weibull_inform.rds")
 vague_file <- here("models", "bayes_weibull_vague.rds")
 
-if (file.exists(inform_file) && file.exists(vague_file)) {
-  bayes_weibull_inform <- readRDS(inform_file)
-  bayes_weibull_vague <- readRDS(vague_file)
-  
-  # Compare key parameters across prior specifications
-  sensitivity_results <- data.frame(
-    Parameter = c("Contract (Two Year)", "Electronic Check", "Total Charges"),
-    Default = c(
-      exp(-fixef(bayes_weibull)["ContractTwoyear", "Estimate"]),
-      exp(-fixef(bayes_weibull)["PaymentMethodElectroniccheck", "Estimate"]),
-      exp(-fixef(bayes_weibull)["TotalCharges_scaled", "Estimate"])
-    ),
-    Informative = c(
-      exp(-fixef(bayes_weibull_inform)["ContractTwoyear", "Estimate"]),
-      exp(-fixef(bayes_weibull_inform)["PaymentMethodElectroniccheck", "Estimate"]),
-      exp(-fixef(bayes_weibull_inform)["TotalCharges_scaled", "Estimate"])
-    ),
-    Vague = c(
-      exp(-fixef(bayes_weibull_vague)["ContractTwoyear", "Estimate"]),
-      exp(-fixef(bayes_weibull_vague)["PaymentMethodElectroniccheck", "Estimate"]),
-      exp(-fixef(bayes_weibull_vague)["TotalCharges_scaled", "Estimate"])
-    )
+bayes_weibull_inform <- readRDS(inform_file)
+bayes_weibull_vague <- readRDS(vague_file)
+
+# Compare parameters across prior specifications
+sensitivity_results <- data.frame(
+  Parameter = c("Contract (Two Year)", "Electronic Check", "Total Charges"),
+  Default = c(
+    exp(-fixef(bayes_weibull)["ContractTwoyear", "Estimate"]),
+    exp(-fixef(bayes_weibull)["PaymentMethodElectroniccheck", "Estimate"]),
+    exp(-fixef(bayes_weibull)["TotalCharges_scaled", "Estimate"])
+  ),
+  Informative = c(
+    exp(-fixef(bayes_weibull_inform)["ContractTwoyear", "Estimate"]),
+    exp(-fixef(bayes_weibull_inform)["PaymentMethodElectroniccheck", "Estimate"]),
+    exp(-fixef(bayes_weibull_inform)["TotalCharges_scaled", "Estimate"])
+  ),
+  Vague = c(
+    exp(-fixef(bayes_weibull_vague)["ContractTwoyear", "Estimate"]),
+    exp(-fixef(bayes_weibull_vague)["PaymentMethodElectroniccheck", "Estimate"]),
+    exp(-fixef(bayes_weibull_vague)["TotalCharges_scaled", "Estimate"])
   )
-  
-  sensitivity_results %>%
-    gt() %>%
-    tab_header(title = "Sensitivity Analysis: Prior Specifications") %>%
-    fmt_number(columns = -Parameter, decimals = 3)
-} else {
-  cat("Note: Sensitivity analysis models not available. Results are robust to prior choice based on theoretical considerations.\n")
-}
+)
+
+sensitivity_results %>%
+  gt() %>%
+  tab_header(title = "Sensitivity Analysis: Prior Specifications") %>%
+  fmt_number(columns = -Parameter, decimals = 3)
 ```
+
+We decided to create a prior where we are more confident in our prior (informative) and a prior where we are less confident (vague). The selected parameter values do not change very much when testing different priors. The parameter estimate for contract changes the most, however the changes are still less than 0.1 in either direction. This leads us to believe that the conclusions drawn from our model are reliable, and not greatly affected by the chosen prior. 
 
 ## 7. Predictive Analysis
 
 ### 7.1 Posterior Predictions for New Customers
 
 ```{r predictions}
-# Create new customer profiles
+# Create new customers
 new_customers <- data.frame(
   Partner = c("Yes", "No", "Yes", "No"),
   InternetService = c("Fiber optic", "DSL", "Fiber optic", "No"),
@@ -554,7 +563,7 @@ for (i in 1:nrow(new_customers)) {
   )
 }
 
-# Combine and plot
+# Plot
 all_survival_probs <- bind_rows(survival_probs)
 
 ggplot(all_survival_probs, aes(x = Time, y = Survival_Prob, color = Customer)) +
@@ -579,6 +588,8 @@ median_survival %>%
   fmt_number(columns = -Customer_Type, decimals = 1)
 ```
 
+Here we created different customer profiles and used our model to predict survival curves for each. The plot illustrates that a high risk customer (month-to-month contract) has a survival probability that quickly decreases to zero, while a medium value customer (one year contract) starts to slowly decrease at around 35 months. The table of median survival times shows that a high value customer (two year contract) has a median survival time of  98 years. Although we expect this type of customer to have a longer survival time, this quantity is much larger than any observed survival time in the data (the maximum being 72 months (6 years)), so we are hesitant to trust these results.
+
 ## 8. Model Comparison Using Information Criteria
 
 ```{r model-comparison}
@@ -586,37 +597,50 @@ median_survival %>%
 waic_result <- waic(bayes_weibull)
 loo_result <- loo(bayes_weibull)
 
-# Display results
-cat("WAIC:", waic_result$estimates["waic", "Estimate"], 
-    "(SE:", waic_result$estimates["waic", "SE"], ")\n")
-cat("LOO-IC:", loo_result$estimates["looic", "Estimate"], 
-    "(SE:", loo_result$estimates["looic", "SE"], ")\n")
+waic_result_inform <- waic(bayes_weibull_inform)
+loo_result_inform <- loo(bayes_weibull_inform)
 
-# Check for problematic observations
-cat("\nPareto k diagnostic:\n")
-cat("Number of observations with k > 0.7:", sum(loo_result$diagnostics$pareto_k > 0.7), "\n")
-cat("Number of observations with k > 1:", sum(loo_result$diagnostics$pareto_k > 1), "\n")
+waic_result_vague <- waic(bayes_weibull_vague)
+loo_result_vague <- loo(bayes_weibull_vague)
+
+cat("Default\n")
+cat("WAIC: ", waic_result$estimates["waic", "Estimate"], 
+    " (SE: ", waic_result$estimates["waic", "SE"], ")\n", sep = "")
+cat("LOO: ", loo_result$estimates["looic", "Estimate"], 
+    " (SE: ", loo_result$estimates["looic", "SE"], ")\n", sep = "")
+cat("\nInformative\n")
+cat("WAIC: ", waic_result_inform$estimates["waic", "Estimate"], 
+    " (SE: ", waic_result_inform$estimates["waic", "SE"], ")\n", sep = "")
+cat("LOO: ", loo_result_inform$estimates["looic", "Estimate"], 
+    " (SE: ", loo_result_inform$estimates["looic", "SE"], ")\n", sep = "")
+cat("\nVague\n")
+cat("WAIC: ", waic_result_vague$estimates["waic", "Estimate"], 
+    " (SE: ", waic_result_vague$estimates["waic", "SE"], ")\n", sep = "")
+cat("LOO: ", loo_result_vague$estimates["looic", "Estimate"], 
+    " (SE: ", loo_result_vague$estimates["looic", "SE"], ")\n", sep = "")
 ```
 
-## 9. Discussion
+We decided to use standardized metrics to test our model's predictive ability. The widely applicable information criterion (WAIC) and leave-one-out cross-validation (LOO) values can be used to compare models, with smaller values indicating a better model. Using the same priors as before, we can see that the best model is made using our initially selected prior (default) for both metrics (although it is very close).
+
+## 9. Conclusions
 
 ### 9.1 Key Findings
 
-Our Bayesian survival analysis reveals several important insights about customer churn:
+Our Bayesian survival analysis reveals several insights about customer churn:
 
-1. **Contract Type is Paramount**: Two-year contracts reduce churn hazard by approximately 98.2% compared to month-to-month contracts, with very high posterior probability (>99.9%). This finding is remarkably consistent with the frequentist Cox model (98.4% reduction).
+1. **Contract Type is Paramount**: Two-year contracts reduce churn hazard by approximately 98.2% compared to month-to-month contracts, with very high posterior probability (>99.9%). This finding is consistent with the frequentist Cox model (98.4% reduction).
 
-2. **Payment Method Matters**: Electronic check payments increase churn risk by 48.7%, while automatic payment methods (bank transfer, credit card) show better retention. The Bayesian approach provides full uncertainty quantification for these effects.
+2. **Payment Method Matters**: Electronic check payments increase churn risk by 48.7%, while automatic payment methods (bank transfer, credit card) show better retention.
 
-3. **Service Bundle Effects**: Customers with online security, device protection, and tech support show lower churn rates, suggesting that service integration increases customer stickiness.
+3. **Service Bundle Effects**: Customers with online security, device protection, and tech support show lower churn rates, suggesting that service integration increases customer retention.
 
 4. **Total Charges Relationship**: Higher total charges are associated with lower churn risk, though the effect size is small. This likely reflects customer tenure and engagement.
 
 ### 9.2 Advantages of the Bayesian Approach
 
-1. **Full Uncertainty Quantification**: Unlike point estimates with confidence intervals, we have complete posterior distributions for all parameters.
+1. **Full Uncertainty Quantification**: Unlike point estimates with confidence intervals, this model provides posterior distributions for all parameters.
 
-2. **Probabilistic Statements**: We can make direct probability statements (e.g., "There's a 99.9% probability that two-year contracts reduce churn").
+2. **Probabilistic Statements**: We can make direct probability statements (e.g., "There's a 99.9% probability that two-year contracts reduce churn") rather than confidence statements.
 
 3. **Predictive Distributions**: Natural framework for generating predictions with uncertainty for new customers.
 
@@ -626,15 +650,19 @@ Our Bayesian survival analysis reveals several important insights about customer
 
 ### 9.3 Comparison with Frequentist Results
 
-The Bayesian and frequentist approaches yielded remarkably similar estimates for key effects:
+The Bayesian and frequentist approaches yielded similar estimates for key effects:
+
 - Contract effects differ by less than 2%
+
 - Payment method effects are consistent in direction and similar in magnitude
+
 - Both identify the same key predictors of churn
 
 The main differences are:
+
 - The Bayesian approach doesn't suffer from proportional hazards violations
+
 - We get full posterior distributions rather than point estimates
-- Predictive uncertainty is naturally incorporated
 
 ### 9.4 Practical Implications
 
@@ -642,14 +670,3 @@ The main differences are:
 2. **Payment Method**: Encourage automatic payment methods over electronic checks
 3. **Service Bundling**: Promote security and support services to increase retention
 4. **Early Intervention**: The high early hazard suggests focusing retention efforts on new customers
-
-## 10. Conclusions
-
-This Bayesian survival analysis successfully extends the frequentist analysis of customer churn, providing:
-
-1. **Robust Parameter Estimates**: Key findings are consistent with the Cox model while avoiding proportional hazards violations
-2. **Enhanced Uncertainty Quantification**: Full posterior distributions for all parameters
-3. **Predictive Framework**: Natural generation of survival predictions for new customers
-4. **Model Validity**: Good posterior predictive checks and convergence diagnostics
-
-The analysis confirms that contract type and payment method are the strongest predictors of customer churn, with implications for customer retention strategies. The Bayesian framework provides a more complete picture of uncertainty and enables probabilistic decision-making for business strategy.
